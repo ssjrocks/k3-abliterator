@@ -1,0 +1,87 @@
+--- kimi_k3.orig.c	2026-11-07 09:40:44.913659284 +1000
++++ kimi_k3.c	2026-11-07 09:42:20.303441482 +1000
+@@ -122,6 +122,7 @@
+ #include "hybrid_split.h"                    /* KV prefix reuse (shared) */
+ #include "serve_codec.h"
+ #include "serve_budget.h"
++#include "k3_dirabl.h"     /* K3_ABL_CTL: directional ablation (k3-abliterator) */
+ #ifdef COLI_SEGMENT_ADAPTER
+ #include "segment_runtime.h"
+ #include "segment_adapters.h"
+@@ -2629,6 +2630,7 @@
+             float *h=hidden+(int64_t)t*D, *p=prefix+(int64_t)t*D;
+             memcpy(p,h,D*sizeof(float));              /* prefix_sum at entry */
+             if(nb>0) res_mix(h,p,bres+(int64_t)t*nbmax*D,nb,D,l->attn_sw,c->eps);
++            dabl_cap(i,pos0+t,h,D);
+             if(snap) memcpy(bres+(int64_t)t*nbmax*D+(int64_t)nb*D,p,D*sizeof(float));
+              rmsnorm_(nrm+(int64_t)t*D,h,l->in_ln,D,c->eps);
+             /* Phase 9: capture attn-input nrm for target token */
+@@ -2643,6 +2645,7 @@
+         { static int once=0; if(i==0 && !once){ once=1;
+             fprintf(stderr,"[K3-PATH] L0 attn=%s metal=%d\n", l->kda?"KDA":"MLA", g_k3_metal); fflush(stderr); } }
+          m->t_attn+=now_s()-t0;
++         dabl_rows(att,C,D,i);
+          /* Phase 9: capture attn output (att) for target token */
+          if(g_k3_val_layer==i && g_k3_val_token<C) val_dump("att",att+(int64_t)g_k3_val_token*D,D);
+         for(int t=0;t<C;t++){
+@@ -2659,6 +2662,7 @@
+         if(l->sparse) moe_forward(m,l,i,nrm,C,mlp);
+         else          dense_forward(m,l,nrm,C,mlp);
+          m->t_moe+=now_s()-t0;
++         dabl_rows(mlp,C,D,i);
+          /* Phase 9: capture mlp output for target token */
+          if(g_k3_val_layer==i && g_k3_val_token<C) val_dump("mlp",mlp+(int64_t)g_k3_val_token*D,D);
+         for(int t=0;t<C;t++){
+@@ -2735,6 +2739,7 @@
+     float *mix=falloc(D);
+     int nb=0;
+     k3_embed(m,ids,pos0,C,hidden);
++    dabl_rows(hidden,C,D,-1);
+     if(pos0==0&&C<=1) fprintf(stderr,"[DBG] step_chunk pos=%d C=%d metal=%d\n", pos0, C, g_k3_metal);
+     int echo_on = g_echo_k>0 && g_echo_id;
+     int from=0;   /* the first layer the CPU runs */
+@@ -2773,6 +2778,7 @@
+ #endif
+             {
+             res_mix(mix,hidden+(int64_t)t*D,bres+(int64_t)t*nbmax*D,nb,D,m->out_sw,c->eps);
++            dabl_cap(c->n_layers,pos0+t,mix,D);
+             rmsnorm_(mix,mix,m->final_norm,D,c->eps);
+             if(m->trace) fwrite(mix,sizeof(float),D,m->trace);
+             w_matmul(lo,mix,&m->lm_head,1);
+@@ -3687,6 +3693,17 @@
+                 q->max_tok,budget,max_ctx,np);
+         q->max_tok=budget;
+     }
++    {   /* K3_ABL_CTL: ablation settings for this request; a change drops state built under the old ones */
++        int ab=dabl_request(m->c.hidden,m->c.n_layers,np-1);
++        if(ab<0){ coli_serve_write_error(stdout,q->id,g_dabl.err); fprintf(stderr,"[ABL] %s\n",g_dabl.err); free(ids); return 0; }
++#ifdef COLI_VULKAN
++        if(g_dabl.on&&g_k3c_on){ coli_serve_write_error(stdout,q->id,"ABL: not supported with the Vulkan dense chain"); free(ids); return 0; }
++#endif
++        if(ab&DABL_RESET){
++            model_state_reset(m);
++            for(int s=0;s<K3_CKPT_MAX;s++) g_k3_ckpt[s].pos=0;
++        }
++    }
+     coli_serve_write_accept(stdout,q->id,np);
+     /* Declare the structured sideband before any generated DATA. Even an
+      * empty sideband is meaningful: it tells the gateway that literal K3
+@@ -3765,6 +3782,7 @@
+                                    &prefill_cancelled);
+         if(prefill_cancelled) break;
+     }
++    dabl_cap_finish(!prefill_cancelled);
+     if(prefill_cancelled){
+         free(lo); k3_cancel_unpublished_state(m); free(ids);
+         if(!poll->fatal) coli_serve_write_error(stdout,q->id,"CANCELLED");
+@@ -4066,6 +4084,10 @@
+             g_k3_mux_slots=(int)v;
+         }
+     }
++    dabl_init();
++    if(g_dabl.armed&&g_k3_mux_slots>1){
++        fprintf(stderr,"K3_ABL_CTL needs KV_SLOTS=1 (ablation changes drop the shared state)\n"); return 2;
++    }
+     /* Usage was printed only when there were NO arguments, so `--help` fell
+      * through as the model directory and the engine went looking for
+      * "--help/config.json". Nobody should have to read the source to find the

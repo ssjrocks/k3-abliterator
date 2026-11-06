@@ -1,0 +1,21 @@
+[project]
+name = "k3-abliterator"
+version = "0.1.0"
+description = "Find and remove the refusal directions a Kimi K3 model still has, through colibri"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=1.26",
+    "pyqt6>=6.6",
+]
+
+[project.scripts]
+k3-abliterator = "k3_abliterator.main:main"
+
+[project.urls]
+Homepage = "https://github.com/ssjrocks/k3-abliterator"
+
+[build-system]
+requires = ["uv_build>=0.8,<0.13.0"]
+build-backend = "uv_build"
