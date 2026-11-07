@@ -176,6 +176,19 @@ class Server:
     def running(self) -> bool:
         return _systemctl("is-active", UNIT).stdout.strip() in ("active", "activating")
 
+    def control_matches(self) -> bool:
+        """False when the running engine reads another control file (started by another copy or
+        run): the live switch would then silently do nothing."""
+        for pid in _unit_pids():
+            try:
+                env = Path(f"/proc/{pid}/environ").read_bytes().split(b"\0")
+            except OSError:
+                continue
+            for item in env:
+                if item.startswith(b"K3_ABL_CTL="):
+                    return item[len(b"K3_ABL_CTL="):].decode() == str(self.control)
+        return True
+
     def memory_gb(self) -> float | None:
         r = _systemctl("show", UNIT, "-p", "MemoryCurrent", "--value")
         try:
@@ -202,11 +215,22 @@ class Reply:
     finish: str = ""
 
 
+_model_ids: dict[int, str] = {}
+
+
+def model_id(port: int) -> str:
+    """The id the gateway serves (it rejects any other)."""
+    if port not in _model_ids:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/v1/models", timeout=10) as r:
+            _model_ids[port] = json.load(r)["data"][0]["id"]
+    return _model_ids[port]
+
+
 def chat(port: int, prompt: str, max_tokens: int, thinking: bool,
          on_text=lambda kind, chunk: None, cancelled=lambda: False) -> Reply:
     """One user turn, streamed. on_text("text" | "reasoning", chunk) as it arrives."""
     body = json.dumps({
-        "model": "kimi-k3", "messages": [{"role": "user", "content": prompt}],
+        "model": model_id(port), "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens, "temperature": 0, "stream": True,
         "enable_thinking": thinking, "stream_options": {"include_usage": True},
     }).encode()

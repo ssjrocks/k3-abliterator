@@ -319,6 +319,9 @@ class Window(QMainWindow):
         lrow.addWidget(self.hi_spin)
         lrow.addStretch(1)
         form.addRow("Layers:", lrow)
+        for w in (self.lo_spin, self.hi_spin):
+            w.setToolTip("Layers whose outputs stop writing the direction. What earlier layers wrote still "
+                         "reaches later ones, so keep the full range (and the embeddings) to remove it everywhere.")
         self.embed_check = QCheckBox("Also the token embeddings", checked=self.store.state.embed)
         self.embed_check.toggled.connect(self._range_changed)
         form.addRow("", self.embed_check)
@@ -468,10 +471,13 @@ class Window(QMainWindow):
 
     def _poll_engine(self):
         running = self.server.running()
-        healthy = running and self.server.healthy()
+        foreign = running and not self.server.control_matches()
+        healthy = running and not foreign and self.server.healthy()
         mem = self.server.memory_gb() if running else None
         mem_s = f", {mem:.0f} GB" if mem else ""
-        if healthy:
+        if foreign:
+            self.engine_status.setText("⚠ Engine started elsewhere: stop it and start it here")
+        elif healthy:
             self.engine_status.setText(f"● Engine ready{mem_s}")
         elif running:
             self.engine_status.setText(f"◌ Engine loading the model{mem_s}...")
@@ -513,7 +519,9 @@ class Window(QMainWindow):
             f.seek(self._log_pos)
             text = f.read().decode(errors="replace")
         self._log_pos = size
-        self.log_view.appendPlainText(text.rstrip("\n"))
+        lines = [ln for ln in text.splitlines() if '"GET /health' not in ln]   # this window's own polling
+        if lines:
+            self.log_view.appendPlainText("\n".join(lines))
 
     # ------------------------------------------------------------ jobs
 
@@ -632,8 +640,8 @@ class Window(QMainWindow):
             basis = "measured"
         else:
             chars = sum(len(p) for p in refused + normal) / max(1, len(refused + normal))
-            per = (chars / 3.5 + 20) * 2.0     # tokens incl. chat template, ~2 s/token prefill (colibri docs)
-            basis = "estimated from colibri's prefill speed"
+            per = (chars / 3.5 + 20) * 4.0     # tokens incl. chat template; a 28-character prompt took ~115 s here
+            basis = "estimated from a first test on this PC"
         total = per * (len(refused) + len(normal))
         self.estimate_label.setText(
             f"Capturing both sets takes about {workflow._fmt(total)} ({workflow._fmt(per)} a prompt, {basis}). "

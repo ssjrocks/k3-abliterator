@@ -72,10 +72,14 @@ class Fake(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b'{"status":"ok"}')
+        if self.path == "/v1/models":
+            self.wfile.write(b'{"data":[{"id":"kimi-k3-colibri"}]}')
+        else:
+            self.wfile.write(b'{"status":"ok"}')
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        assert body["model"] == "kimi-k3-colibri", body["model"]
         prompt = body["messages"][-1]["content"]
         cfg = read_ctl()
         rows = hidden_rows(prompt, cfg)
@@ -127,6 +131,7 @@ def main():
     engine.Server.running = lambda self: False
     engine.Server.healthy = lambda self: False
     engine.Server.memory_gb = lambda self: 44.0
+    engine.Server.control_matches = lambda self: True
     engine.Server.stop = lambda self: None
     engine.other_servers = lambda: []
 
