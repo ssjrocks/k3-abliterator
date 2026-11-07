@@ -37,8 +37,8 @@ run it on a desktop. This app drives colibri instead.
 
 1. **Start engine.** It loads the model through colibri, which takes a few minutes. Only one
    Kimi K3 server fits in memory, so the app offers to stop another one if it finds one running.
-   The engine runs in its own cgroup with a 60 GB RAM cap (`heavy`), so a runaway kills only
-   the engine.
+   The engine runs as a user service (`k3-abliterator-engine`) with no memory cap: colibri sizes
+   its own memory from what the machine has free, as when you run `coli` yourself.
 2. **Prompts.** Add 24 or more prompts the model still refuses, in different wordings. The
    normal set comes filled in.
 3. **Directions → Capture prompts and compute.** At colibri's measured ~2 s per prompt token,

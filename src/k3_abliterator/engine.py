@@ -10,7 +10,6 @@ import hashlib
 import json
 import logging
 import os
-import shutil
 import signal
 import subprocess
 import time
@@ -26,7 +25,6 @@ LOG = logging.getLogger(__name__)
 HERE = Path(__file__).parent / "engine"
 UNIT = "k3-abliterator-engine"
 PORT = 8011
-RAM_CAP = "60G"        # measured: the stock engine peaks at 44.6 GB on this model with a 64k context
 CONTEXT = 8192
 
 
@@ -149,11 +147,11 @@ class Server:
         env = [f"COLI_ENGINE={engine}", f"K3_ABL_CTL={self.control}", "KV_SLOTS=1"]
         serve = [str(coli), "serve", "--model", str(self.model), "--host", "127.0.0.1",
                  "--port", str(self.port), "--ctx", str(CONTEXT), "--gpu", "auto", "--auto-tier"]
-        heavy = shutil.which("heavy") or str(Path.home() / ".local/bin/heavy")
-        if Path(heavy).exists():
-            # Own cgroup with a RAM cap: if the engine overruns, only it is killed.
-            return [heavy, "-m", RAM_CAP, "-n", UNIT, "-o", str(self.log), "--", "env", *env, *serve]
-        return ["systemd-run", "--user", f"--unit={UNIT}", "--collect", "-p", "Nice=10",
+        # A user service so it can be stopped and found again, but with no memory cap, nice or
+        # weight: colibri sizes its expert cache from the whole machine's MemAvailable and can't
+        # see a cgroup limit, so a cap would get it killed instead of making it budget smaller.
+        # The service runs at the user manager's normal priority, whoever starts it.
+        return ["systemd-run", "--user", f"--unit={UNIT}", "--collect",
                 "-p", f"StandardOutput=append:{self.log}", "-p", f"StandardError=append:{self.log}",
                 "--", "env", *env, *serve]
 

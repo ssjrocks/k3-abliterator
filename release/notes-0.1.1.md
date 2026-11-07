@@ -1,0 +1,2 @@
+- The engine now runs with no RAM cap, at normal priority, like `coli` run by hand. colibri sizes its expert cache from the whole machine's free memory and can't see a cgroup limit, so a cap could only get it killed.
+- Removed an unused import.

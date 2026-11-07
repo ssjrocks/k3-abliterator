@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtCore import QObject, QRectF, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QRectF, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QPainter, QPalette, QTextCursor
 from PyQt6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
