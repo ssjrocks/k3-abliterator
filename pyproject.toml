@@ -1,6 +1,6 @@
 [project]
 name = "k3-abliterator"
-version = "0.1.1"
+version = "0.1.2"
 description = "Find and remove the refusal directions a Kimi K3 model still has, through colibri"
 readme = "README.md"
 license = "MIT"

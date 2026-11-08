@@ -142,13 +142,26 @@ def test_refusal_keywords():
     assert not prompts.looks_refused("Sure! Here's a simple tomato sauce: first, ...")
 
 
+def test_old_saved_refused_prompts_are_wiped():
+    from k3_abliterator.store import Store
+    s = Store("old")
+    data = json.loads((s.dir / "state.json").read_text()) if (s.dir / "state.json").exists() else {}
+    data["refused"] = ["something saved by 0.1.1"]
+    data["scale"] = 0.7
+    (s.dir / "state.json").write_text(json.dumps(data))
+    again = Store("old")
+    assert again.state.refused == [] and again.state.scale == 0.7
+    assert "something saved" not in (s.dir / "state.json").read_text()
+
+
 def test_store_round_trip():
     from k3_abliterator.store import Store
     s = Store("t")
     s.state.refused = ["a", "b"]
     s.add_round(np.arange(8, dtype=np.float32), 40, 3.2, 2, 2)
     again = Store("t")
-    assert again.state.refused == ["a", "b"] and again.state.rounds[0].layer == 40
+    assert again.state.refused == [] and again.state.rounds[0].layer == 40   # refused prompts never saved
+    assert "refused" not in json.loads((s.dir / "state.json").read_text())
     abl = again.ablation()
     assert abl.directions and np.fromfile(abl.directions, np.float32).shape == (8,)
     assert again.ablation(on=False).directions is None

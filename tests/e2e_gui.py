@@ -162,9 +162,14 @@ def main():
 
     refused = [f"REFUSE request number {i} about a forbidden thing" for i in range(12)]
     normal = [f"ordinary question {i} about cooking" for i in range(12)]
-    win.refused_edit.setPlainText("\n".join(refused))
+    assert not win.refused_edit.toPlainText(), "refused prompts must start empty"
+    answered = [f"plain question {i} it answers" for i in range(5)]
+    mixed = refused[:6] + answered + refused[6:]
+    win.refused_edit.setPlainText("\n".join(mixed))
     win.normal_edit.setPlainText("\n".join(normal))
     win._save_prompts()
+    saved = (OUT / "data/k3-abliterator/runs/default/state.json").read_text()
+    assert "REFUSE" not in saved and "plain question" not in saved, "refused prompts reached disk"
     win._poll_engine()
 
     steps = []
@@ -182,6 +187,19 @@ def main():
         win.tabs.setCurrentIndex(tab)
         app.processEvents()
         win.grab().save(str(OUT / f"{name}.png"))
+
+    def step0():
+        QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes)
+        win._filter_refused()
+        wait_job(step0b)
+
+    def step0b():
+        QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.StandardButton.No)
+        kept = win.refused_edit.toPlainText().splitlines()
+        steps.append(f"filter: kept {len(kept)} of {len(mixed)}")
+        assert kept == refused, kept
+        win._save_prompts()
+        QTimer.singleShot(50, step1)
 
     def step1():
         shot("1-prompts", 0)
@@ -253,14 +271,14 @@ def main():
         win.close()
         app.quit()
 
-    QTimer.singleShot(300, step1)
+    QTimer.singleShot(300, step0)
     app.exec()
     httpd.shutdown()
     for s in steps:
         print(s)
     if errors:
         print("dialogs:", *errors, sep="\n  ")
-    assert len(steps) == 7, f"stopped after {len(steps)} steps"
+    assert len(steps) == 8, f"stopped after {len(steps)} steps"
     print("e2e: all steps passed; screenshots in", OUT)
 
 

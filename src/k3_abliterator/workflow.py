@@ -124,6 +124,26 @@ def refusal_check(job: Job, store, server, max_tokens: int, original: bool) -> d
     return counts
 
 
+def still_refused(job: Job, store, server, prompts: list[str], max_tokens: int) -> list[bool]:
+    """Ask the model as it is (ablation off) each prompt; True where the answer still reads as a refusal."""
+    s = store.state
+    out = []
+    engine.write_control(store.control, store.ablation(on=False))
+    for i, prompt in enumerate(prompts):
+        job.check()
+        per = s.seconds_per_token * max_tokens + s.seconds_per_prompt if s.seconds_per_token else 0
+        eta = f", about {_fmt((len(prompts) - i) * per)} left" if per else ""
+        job.progress(i, len(prompts), f"Asking prompt {i + 1} of {len(prompts)}{eta}")
+        reply = engine.chat(server.port, prompt, max_tokens, s.thinking, cancelled=job.cancelled)
+        out.append(looks_refused(reply.text or reply.reasoning))
+        if reply.tokens:
+            s.seconds_per_token = reply.seconds / reply.tokens
+            store.save()
+    engine.write_control(store.control, store.ablation())
+    job.progress(len(prompts), len(prompts), "Done")
+    return out
+
+
 def _fmt(seconds: float) -> str:
     if seconds < 90:
         return f"{int(seconds)} s"

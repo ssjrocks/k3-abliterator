@@ -26,7 +26,7 @@ class Round:
 @dataclass
 class State:
     model: str = str(paths.DEFAULT_MODEL)
-    refused: list[str] = field(default_factory=list)
+    refused: list[str] = field(default_factory=list)    # never saved: entered each session
     normal: list[str] = field(default_factory=lambda: list(DEFAULT_NORMAL))
     rounds: list[Round] = field(default_factory=list)
     scale: float = 1.0
@@ -62,12 +62,20 @@ class Store:
         except (OSError, ValueError):
             return State()
         rounds = [Round(**r) for r in raw.pop("rounds", [])]
+        stale = raw.pop("refused", None)
         known = State.__dataclass_fields__
-        return State(rounds=rounds, **{k: v for k, v in raw.items() if k in known})
+        state = State(rounds=rounds, **{k: v for k, v in raw.items() if k in known})
+        if stale is not None:           # written by 0.1.1 or older: drop it from disk now
+            self.state = state
+            self.save()
+        return state
 
     def save(self) -> None:
+        """Everything but the refused prompts, which only ever live in memory."""
+        data = asdict(self.state)
+        del data["refused"]
         tmp = self.dir / "state.json.tmp"
-        tmp.write_text(json.dumps(asdict(self.state), indent=2))
+        tmp.write_text(json.dumps(data, indent=2))
         tmp.replace(self.dir / "state.json")
 
     # ---- directions

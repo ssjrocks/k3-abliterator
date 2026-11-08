@@ -239,14 +239,27 @@ class Window(QMainWindow):
         intro.setWordWrap(True)
         lay.addWidget(intro)
         split = QSplitter()
-        left = QGroupBox("Prompts it still refuses")
+        left = QGroupBox("Prompts it still refuses (not saved)")
         ll = QVBoxLayout(left)
-        self.refused_edit = QPlainTextEdit("\n".join(self.store.state.refused))
-        self.refused_edit.setPlaceholderText("One prompt per line")
+        self.refused_edit = QPlainTextEdit()
+        self.refused_edit.setPlaceholderText(
+            "One prompt per line.\n\nThese are kept in memory only and never written to disk: "
+            "paste them in each time you open the app. Captures are kept under a hash of each "
+            "prompt, so pasting the same ones again skips reading them.")
         self.refused_edit.textChanged.connect(self._save_timer_start)
         ll.addWidget(self.refused_edit)
         self.refused_count = QLabel()
         ll.addWidget(self.refused_count)
+        frow = QHBoxLayout()
+        self.filter_btn = QPushButton("Keep only ones it still refuses", clicked=self._filter_refused)
+        self.filter_btn.setToolTip("Asks the model as it is now (live ablation off) each prompt and drops the "
+                                   "ones it answers. A keyword check on the start of each answer.")
+        frow.addWidget(self.filter_btn)
+        frow.addWidget(QLabel("tokens each:"))
+        self.filter_tokens = QSpinBox(minimum=8, maximum=512, value=24)
+        frow.addWidget(self.filter_tokens)
+        frow.addStretch(1)
+        ll.addLayout(frow)
         right = QGroupBox("Normal prompts")
         rl = QVBoxLayout(right)
         self.normal_edit = QPlainTextEdit("\n".join(self.store.state.normal))
@@ -534,6 +547,7 @@ class Window(QMainWindow):
         self.ask_abl.setEnabled(ready and bool(self.store.state.rounds))
         self.ask_both.setEnabled(ready and bool(self.store.state.rounds))
         self.check_btn.setEnabled(ready and bool(self.store.state.refused))
+        self.filter_btn.setEnabled(ready and bool(self.store.state.refused))
         self.bake_btn.setEnabled(not busy and bool(self.store.state.rounds))
         self.add_btn.setEnabled(not busy and self.stats is not None and self.picked_layer >= 0)
         self.model_edit.setEnabled(not busy)
@@ -623,6 +637,32 @@ class Window(QMainWindow):
 
     def _reset_normal(self):
         self.normal_edit.setPlainText("\n".join(DEFAULT_NORMAL))
+
+    def _filter_refused(self):
+        prompts = parse_lines(self.refused_edit.toPlainText())
+        if not prompts:
+            return
+
+        def done(refused):
+            keep = [p for p, r in zip(prompts, refused) if r]
+            answered = len(prompts) - len(keep)
+            self.job_label.setText(f"{len(keep)} of {len(prompts)} still refused")
+            if not answered:
+                QMessageBox.information(self, "Still refused", f"It refused all {len(prompts)}; the list is unchanged.")
+                return
+            if parse_lines(self.refused_edit.toPlainText()) != prompts:
+                QMessageBox.information(self, "Still refused", "The list was edited while this ran, so it's "
+                                        f"unchanged. {len(keep)} of the {len(prompts)} asked were still refused.")
+                return
+            if QMessageBox.question(
+                    self, "Still refused",
+                    f"It answered {answered} of {len(prompts)} prompts. Remove those and keep the {len(keep)} it "
+                    "still refuses?") == QMessageBox.StandardButton.Yes:
+                self.refused_edit.setPlainText("\n".join(keep))
+
+        self._start_job(lambda job: workflow.still_refused(job, self.store, self.server, prompts,
+                                                           self.filter_tokens.value()),
+                        done, "Asking the model...")
 
     def _thinking_changed(self, on):
         self.store.state.thinking = on

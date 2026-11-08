@@ -1,0 +1,2 @@
+- Prompts it still refuses are no longer saved: they live in memory only and have to be pasted in each time you open the app. A list saved by an earlier version is wiped from disk the first time 0.1.2 starts. Captures stay cached under a hash of each prompt, so re-pasting the same prompts doesn't read them again.
+- New **Keep only ones it still refuses** button: asks the model as it is (live ablation off) each pasted prompt and, after you confirm, drops the ones it answers.

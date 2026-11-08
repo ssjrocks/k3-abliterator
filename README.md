@@ -39,8 +39,12 @@ run it on a desktop. This app drives colibri instead.
    Kimi K3 server fits in memory, so the app offers to stop another one if it finds one running.
    The engine runs as a user service (`k3-abliterator-engine`) with no memory cap: colibri sizes
    its own memory from what the machine has free, as when you run `coli` yourself.
-2. **Prompts.** Add 24 or more prompts the model still refuses, in different wordings. The
-   normal set comes filled in.
+2. **Prompts.** Paste 24 or more prompts the model still refuses, in different wordings, then
+   **Keep only ones it still refuses** to drop any it already answers (a keyword check on the
+   first tokens of each answer, with the live ablation off). The refused prompts are **never
+   saved**: they live in memory only, so paste them in each time you open the app. Captures are
+   stored under a hash of each prompt, not its text, so the same prompts aren't read again. The
+   normal set comes filled in and is saved.
 3. **Directions → Capture prompts and compute.** At colibri's measured ~2 s per prompt token,
    expect an hour or two for 60 prompts. Captures are kept, so changing a few prompts only
    reads those again. Pick a layer (the best middle-of-stack one is preselected), then
